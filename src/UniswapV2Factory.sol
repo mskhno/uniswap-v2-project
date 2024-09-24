@@ -25,6 +25,7 @@ import {UniswapV2Pair} from "./UniswapV2Pair.sol";
 // internal & private view & pure functions
 // external & public view & pure functions
 
+//@Vlad Здесь всё по красоте!
 contract UniswapV2Factory {
     /////////////////
     // ERRORS

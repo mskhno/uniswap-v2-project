@@ -89,7 +89,7 @@ contract UniswapV2Pair is UniswapV2ERC20 {
      * @dev Assumes that caller has already approved this contract to spend their token0 and token1 in at least
      * amount0In and amount1In respectively
      * @dev There's likelyhood of unspent allowance of token0 or token1, depending on the amounts passed, since
-     * the function doesn't not assume caller knows reserve proportions and therefore itself figures out the optimal
+     * the function doesn't assume caller knows reserve proportions and therefore itself figures out the optimal
      * amounts of tokens to take from caller
      *
      * Maybe TODO:
@@ -99,6 +99,9 @@ contract UniswapV2Pair is UniswapV2ERC20 {
         external
         returns (uint256 lpTokenAmount)
     {
+        //@Vlad Ага. Без этого каждый раз код бы использовал SLOAD (warm access стоит 100 gas), чтобы получить доступ к резерву
+        // А так он хранится всегда в стеке, где доступ очень дешёвый
+        // Но вообще внутреннее устройство Solidity: stack, opcodes будет попозже. И изучаться будет по статьям
         (uint256 _reserveAmountToken0, uint256 _reserveAmountToken1) = getReserves(); // saves gas???
 
         // check amountsIn are non-zero
@@ -113,7 +116,7 @@ contract UniswapV2Pair is UniswapV2ERC20 {
         uint256 optimalAmountToken0In;
         uint256 optimalAmountToken1In;
         // if total supply is zero == if reserves are zero??
-        // total cupply only changes when reserves change
+        // total supply only changes when reserves change
         // so maybe checking if reserves are zero or if totalSupply is zero is the same
         if (_reserveAmountToken0 == 0 || _reserveAmountToken1 == 0) {
             optimalAmountToken0In = amountToken0In;
@@ -128,9 +131,11 @@ contract UniswapV2Pair is UniswapV2ERC20 {
                 _getOptimalAmountsIn(amountToken0In, amountToken1In, _reserveAmountToken0, _reserveAmountToken1);
             // calculate amount to mint
             // maybe calculate for both tokens and mint the minimal amount as in min(lpTokensByAmount0, lpTokensByAmount1)
+            //@Vlad работает норм
             lpTokenAmount = (optimalAmountToken0In * totalSupply) / _reserveAmountToken0;
         }
 
+        //@Vlad можно без неё
         // do we really need this check?
         // if (lpTokenAmount == 0) {
         //     revert UniswapV2Pair__InsufficientLiquidityMinted();
@@ -139,6 +144,8 @@ contract UniswapV2Pair is UniswapV2ERC20 {
         // transferFrom optimal amounts of token0 and token1 from caller
         IERC20(token0).transferFrom(msg.sender, address(this), optimalAmountToken0In);
         IERC20(token1).transferFrom(msg.sender, address(this), optimalAmountToken1In);
+        //@Vlad Обязательно нужно. Есть токены, например USDT - он не делает returns bool - из-за этого будет ревёрт (интерфейс ожидает этот return)
+        //@Vlad А также некоторые токены делают returns false вместо revert: https://github.com/d-xo/weird-erc20/#no-revert-on-failure
         // should i do bool success and check it?
 
         // mint lp tokens
@@ -161,6 +168,7 @@ contract UniswapV2Pair is UniswapV2ERC20 {
      *
      * @dev needs approval before calling??
      */
+    //@Vlad норм
     function burn(address to) external returns (uint256 amountToken0Out, uint256 amountToken1Out) {
         (uint256 _reserveAmountToken0, uint256 _reserveAmountToken1) = getReserves(); // saves gas???
 
@@ -206,6 +214,13 @@ contract UniswapV2Pair is UniswapV2ERC20 {
      * @dev Atleast one amount should be non-zero
      *
      */
+    
+    //@Vlad функция работает, но если честно это не то, чего я ожидал увидеть
+    // Думал ты будешь просто сделаешь swap одного токена на другой, другими словами когда одна из "out" переменных равна 0
+    // Uniswap это делают, чтобы позволить flash swap. В данной реализации это бессмысленно, и может быть
+    // При подсчёте amountTokenXIn будут неточности (нужно проверять)
+
+    // Подумал снова, всё решается если добавить `require(только одна из out переменных равна 0)`. Хорошая работа!
     function swap(address to, uint256 amountToken0Out, uint256 amountToken1Out)
         external
         returns (uint256 amountToken0In, uint256 amountToken1In)
@@ -304,6 +319,7 @@ contract UniswapV2Pair is UniswapV2ERC20 {
      * @return optimalAmountToken0In Amount of token0 to take which doesn't change reserve proportions
      * @return optimalAmountToken1In Amount of token1 to take which doesn't change reserve proportions
      */
+    //@Vlad Функция работает правильно, хотя это неочевидно. Можно попытаться упростить её, но не уверен что получится
     function _getOptimalAmountsIn(
         uint256 amount0In,
         uint256 amount1In,
@@ -335,6 +351,7 @@ contract UniswapV2Pair is UniswapV2ERC20 {
      * @param _reserveA  Amount of tokenA in reserves
      * @param _reserveB Amount of tokenB in reserves
      */
+    //@Vlad норм
     function _calculateTokenIn(uint256 amountTokenXIn, uint256 _reserveA, uint256 _reserveB)
         private
         pure
@@ -362,6 +379,7 @@ contract UniswapV2Pair is UniswapV2ERC20 {
      * @param _reserveAmountToken0 Amount of token0 in reserves
      * @param _reserveAmountToken1 Amount of token1 in reserves
      */
+    //@Vlad норм
     function _getAmountTokensOut(
         uint256 amountLpTokens,
         uint256 totalSupply,
