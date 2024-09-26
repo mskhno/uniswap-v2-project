@@ -3,29 +3,6 @@ pragma solidity 0.8.24;
 
 import {UniswapV2Pair} from "./UniswapV2Pair.sol";
 
-// Layout of Contract:
-// ablversion
-// imports
-// errors
-// interfaces, libraries, contracts
-// Type declarations
-// State varies
-// Events
-// Modifiers
-// Functions
-
-// Layout of Functions:
-// constructor
-// receive function (if exists)
-// fallback function (if exists)
-// external
-// public
-// internal
-// private
-// internal & private view & pure functions
-// external & public view & pure functions
-
-//@Vlad Здесь всё по красоте!
 contract UniswapV2Factory {
     /////////////////
     // ERRORS
@@ -37,8 +14,6 @@ contract UniswapV2Factory {
     /////////////////
     // STATE VARIABLES
     /////////////////
-    // keep track of all pairs created
-    // populated both for (tokenA, tokenB) and (tokenB, tokenA)
     mapping(address tokenA => mapping(address tokenB => address)) public getPair;
 
     event PairCreated(address indexed token0, address indexed token1, address pair);
@@ -54,30 +29,23 @@ contract UniswapV2Factory {
      * @dev Creates UniswapV2Pair contract via create2, address of the pair can be determined calculatePairAddress()
      */
     function createPair(address tokenA, address tokenB) external returns (address pair) {
-        // get sorted non-equal non-zero token addresses
         (address token0, address token1) = _sortAndCheckAddresses(tokenA, tokenB);
 
-        //  -- check pair does not exist
         if (getPair[token0][token1] != address(0)) {
             revert UniswapV2Factory__PairAlreadyExists();
         }
 
-        //  -- create pair at unique deterministic address
-        //     bytecode, salt(keccak256(token0, token1))
         bytes memory bytecode = type(UniswapV2Pair).creationCode;
         bytes32 salt = keccak256(abi.encodePacked(token0, token1));
         assembly {
             pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
         }
 
-        //  -- initialize pair
         UniswapV2Pair(pair).initialize(token0, token1);
 
-        //  -- populate getPair for both token orders
         getPair[token0][token1] = pair;
         getPair[token1][token0] = pair;
 
-        //  -- emit event
         emit PairCreated(token0, token1, pair);
     }
 
@@ -123,7 +91,6 @@ contract UniswapV2Factory {
             revert UniswapV2Factory__TokenAddressesAreEqual();
         }
 
-        // sort addresses
         if (tokenA < tokenB) {
             token0 = tokenA;
             token1 = tokenB;
@@ -132,7 +99,6 @@ contract UniswapV2Factory {
             token1 = tokenA;
         }
 
-        // checking token0 is sufficient because token0 < token1
         if (token0 == address(0)) {
             revert UniswapV2Factory__TokenAddressCantBeZero();
         }

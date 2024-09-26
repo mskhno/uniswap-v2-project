@@ -512,15 +512,25 @@ contract UniswapV2PairTest is Test {
     /////////////////
 
     function test_swap_RevertWhenNoneOfAmountsOutAreNonZero() public {
-        vm.expectRevert(UniswapV2Pair.UniswapV2Pair__AtleastOneAmountShouldBeNonZero.selector);
+        vm.expectRevert(UniswapV2Pair.UniswapV2Pair__OnlyOneAmountOutShouldBeNonZero.selector);
         vm.prank(user);
         pair.swap(user, 0, 0);
     }
 
-    function test_swap_RevertsWhenNoLiquidtyInPool() public {
-        vm.expectRevert(UniswapV2Pair.UniswapV2Pair__NoLiquidityInPool.selector);
+    function test_swap_RevertsWhenAllAmountsOutAreNonZero() public {
+        vm.expectRevert(UniswapV2Pair.UniswapV2Pair__OnlyOneAmountOutShouldBeNonZero.selector);
         vm.prank(user);
         pair.swap(user, 100e18, 100e18);
+    }
+
+    function test_swap_RevertsWhenNoLiquidityInPool() public {
+        vm.expectRevert(UniswapV2Pair.UniswapV2Pair__NoLiquidityInPool.selector);
+        vm.prank(user);
+        pair.swap(user, 100e18, 0);
+
+        vm.expectRevert(UniswapV2Pair.UniswapV2Pair__NoLiquidityInPool.selector);
+        vm.prank(user);
+        pair.swap(user, 0, 100e18);
     }
 
     function test_swap_SwapsToken0ForToken1() public initialLiquidity {
@@ -563,35 +573,6 @@ contract UniswapV2PairTest is Test {
         assertEq(actualToToken0Balance, initialToToken0Balance + wantedAmountToken0Out);
     }
 
-    // maybe i should change the order of tranfers and calculations?
-    function test_swap_SwapsTokens() public initialLiquidity {
-        address to = makeAddr("to");
-
-        uint256 wantedAmountToken0Out = 100e18;
-        uint256 wantedAmountToken1Out = 200e18;
-
-        uint256 initialUserToken0Balance = token0.balanceOf(user);
-        uint256 initialUserToken1Balance = token1.balanceOf(user);
-
-        uint256 initialToToken0Balance = token0.balanceOf(to);
-        uint256 initialToToken1Balance = token1.balanceOf(to);
-
-        vm.startPrank(user);
-        (uint256 amountToken0In, uint256 amountToken1In) = pair.swap(to, wantedAmountToken0Out, wantedAmountToken1Out);
-
-        uint256 actualUserToken0Balance = token0.balanceOf(user);
-        uint256 actualUserToken1Balance = token1.balanceOf(user);
-
-        assertEq(actualUserToken0Balance, initialUserToken0Balance - amountToken0In);
-        assertEq(actualUserToken1Balance, initialUserToken1Balance - amountToken1In);
-
-        uint256 actualToToken0Balance = token0.balanceOf(to);
-        uint256 actualToToken1Balance = token1.balanceOf(to);
-
-        assertEq(actualToToken0Balance, initialToToken0Balance + wantedAmountToken0Out);
-        assertEq(actualToToken1Balance, initialToToken1Balance + wantedAmountToken1Out);
-    }
-
     function test_swap_UpdatesReserves() public initialLiquidity {
         (uint256 initialReserveAmountToken0, uint256 initialReserveAmountToken1) = pair.getReserves();
 
@@ -599,7 +580,11 @@ contract UniswapV2PairTest is Test {
         uint256 wantedAmountToken1Out = 200e18;
 
         vm.startPrank(user);
-        (uint256 amountToken0In, uint256 amountToken1In) = pair.swap(user, wantedAmountToken0Out, wantedAmountToken1Out);
+        (uint256 amountToken0In, uint256 amountToken1In) = pair.swap(user, wantedAmountToken0Out, 0);
+        (uint256 amountToken0In2, uint256 amountToken1In2) = pair.swap(user, 0, wantedAmountToken1Out);
+
+        amountToken0In += amountToken0In2;
+        amountToken1In += amountToken1In2;
 
         (uint256 actualReserveAmountToken0, uint256 actualReserveAmountToken1) = pair.getReserves();
 
@@ -608,16 +593,14 @@ contract UniswapV2PairTest is Test {
     }
 
     function test_swap_EmitsTransferSyncAndSwapEvents() public initialLiquidity {
-        uint256 wantedAmountToken0Out = 100e18;
         uint256 wantedAmountToken1Out = 200e18;
 
         uint256 amountToken0In = 150000000000000000000;
-        uint256 amountToken1In = 300000000000000000000;
 
         (uint256 reserveAmountToken0, uint256 reserveAmountToken1) = pair.getReserves();
 
-        uint256 newReserveAmountToken0 = reserveAmountToken0 - wantedAmountToken0Out + amountToken0In;
-        uint256 newReserveAmountToken1 = reserveAmountToken1 - wantedAmountToken1Out + amountToken1In;
+        uint256 newReserveAmountToken0 = reserveAmountToken0 + amountToken0In;
+        uint256 newReserveAmountToken1 = reserveAmountToken1 - wantedAmountToken1Out;
 
         vm.prank(user);
 
@@ -628,6 +611,29 @@ contract UniswapV2PairTest is Test {
         // transfer user token1
         vm.expectEmit(true, true, false, true);
         emit Transfer(address(pair), user, wantedAmountToken1Out);
+
+        // _updateReserves
+        vm.expectEmit(true, true, false, false);
+        emit Sync(newReserveAmountToken0, newReserveAmountToken1);
+
+        // Swap event
+        vm.expectEmit(true, true, false, true);
+        emit Swap(user, amountToken0In, 0, 0, wantedAmountToken1Out, user);
+
+        pair.swap(user, 0, wantedAmountToken1Out);
+    }
+
+    function test_swap_EmitsTransferSyncAndSwapEvents2() public initialLiquidity {
+        uint256 wantedAmountToken0Out = 100e18;
+
+        uint256 amountToken1In = 300e18;
+
+        (uint256 reserveAmountToken0, uint256 reserveAmountToken1) = pair.getReserves();
+
+        uint256 newReserveAmountToken0 = reserveAmountToken0 - wantedAmountToken0Out;
+        uint256 newReserveAmountToken1 = reserveAmountToken1 + amountToken1In;
+
+        vm.prank(user);
 
         // transferFrom user token1
         vm.expectEmit(true, true, false, true);
@@ -643,8 +649,8 @@ contract UniswapV2PairTest is Test {
 
         // Swap event
         vm.expectEmit(true, true, false, true);
-        emit Swap(user, amountToken0In, amountToken1In, wantedAmountToken0Out, wantedAmountToken1Out, user);
+        emit Swap(user, 0, amountToken1In, wantedAmountToken0Out, 0, user);
 
-        pair.swap(user, wantedAmountToken0Out, wantedAmountToken1Out);
+        pair.swap(user, wantedAmountToken0Out, 0);
     }
 }
